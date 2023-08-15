@@ -1,0 +1,87 @@
+---
+title: "NYPDShootingAnalysis"
+author: "Shaun B."
+date: "2023-07-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+```
+
+## Step 1: Importing the Data
+```{r importing data}
+url = 'https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD'
+
+
+shooting_data = read_csv(url)
+
+head(shooting_data)
+```
+
+## Step 2: Cleaning the Data
+```{r cleaning data 1}
+shooting_data = shooting_data %>%
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE)) %>%
+  select(-c(INCIDENT_KEY, JURISDICTION_CODE, X_COORD_CD, Y_COORD_CD, Latitude, Longitude))
+
+shooting_data$PERP_AGE_GROUP <- as.factor(shooting_data$PERP_AGE_GROUP)
+shooting_data$PERP_SEX <- as.factor(shooting_data$PERP_SEX)
+shooting_data$PERP_RACE <- as.factor(shooting_data$PERP_RACE)
+shooting_data$VIC_AGE_GROUP <- as.factor(shooting_data$VIC_AGE_GROUP)
+shooting_data$VIC_SEX <- as.factor(shooting_data$VIC_SEX)
+shooting_data$VIC_RACE <- as.factor(shooting_data$VIC_RACE)
+
+head(shooting_data)
+
+```
+
+### Question: Is there missing data? How will you handle the missing data?
+I plan to handle by putting NA for categorical variables into their own bucket of "unknown" so this can be accounted for in the statistics instead of ignored all together. This will allow me to see a % of the values that are considered unknown. This is taking an assumption that NA values are indeed unknown and not considered nothing or not having a value since we can make the logical assumption that each individual perp and vic had an age/sex/race.
+
+
+## Step 3: Visualizing the Data 1
+```{r Analysis}
+#the filter was added here to exclude null and its variations from the data as well as some bad data points.
+shooting_data %>%
+  filter(PERP_AGE_GROUP %in% c('<18', '18-24', '25-44', '45-64', '65+')) %>%
+  ggplot(aes(x = PERP_AGE_GROUP))+ geom_bar()
+```
+
+### Analysis of Data 1
+It appears that crime is more common within the middle age groups (18-24)/(25-44) than the <18 or 45+ crowds. I would also be curious to see the population density of these age groups to scale to a per-capita to eliminate any bias of there being more persons of a given age within NY.
+
+## Step 3 (cont.): Visualizing the Data 2
+```{r Analysis 2}
+shooting_data %>%
+  ggplot(aes(x=OCCUR_TIME)) + geom_bar()
+```
+
+### Analysis of Data 2
+This plot is the crimes committed by their hour. This helps us to see if there are more crimes committed at night/early morning or during the day. It appears there is a large cluster of crimes committed around midnight. I would additionally be curious to dig in and see if there was any seasonality to the crimes. This could answer questions like if maybe the winter months see less crimes due to things likecold weather and people staying indoors or not, etc.
+
+## Modeling of Data
+```{r Modeling}
+shooting_data$OCCUR_TIME_numeric = as.numeric(shooting_data$OCCUR_TIME)
+shooting_data_filtered <- shooting_data %>% filter(PERP_AGE_GROUP %in% c('<18', '18-24', '25-44', '45-64', '65+'))
+ml = lm(OCCUR_TIME_numeric ~ PERP_AGE_GROUP ,data=shooting_data_filtered)
+summary(ml)
+shooting_data_w_pred <- shooting_data_filtered %>% mutate(pred = predict(ml))
+#head(shooting_data_w_pred)
+
+shooting_data_w_pred %>% ggplot(aes(x=PERP_AGE_GROUP, y=OCCUR_TIME_numeric)) + geom_violin() + ggtitle("Actual")
+
+shooting_data_w_pred %>% ggplot(aes(x=PERP_AGE_GROUP, y=pred)) + geom_violin() + ggtitle("Predicted")
+```
+
+### Modeling Analysis
+I chose to model if you could predict the expected time that a crime would be commited by the age group of individual. I simply converted to the OCCUR_TIME to a numeric value so it could be plotted. So a value of 0 is midnight and it climes quickly by hour counting up until 11:59PM. This turned out to not be a good predictor as the r squared value was very small. Still, plotting the predicted value there was variation in expected time of crime occurrence based on the age group. It seems that people 45-64 are more willing to commit crimes during the day. I found this to be an interesting insight.
+
+## Conlclusion
+The data visualizations produced in this doc give a glimpse into what age groups are committing crimes and when they are being committed in NY. I tried hard to stay away from data points that could lead to controversial topics. This could be seen as a bias into what conclusions I pulled from the data provided as I avoided race and sex as pulling info to see if there is a correlation there could be more controversial.If I were to pick those data points there are biases in the data such as not taking into account things like race density per-capita, etc. Sticking to the data points I did helped eliminate bias as they were very holistic values and not needing of more information that wasn't provided in the data requiring additional research. Still, some bias was present such as not taking into account how many people reside in NY by each age bucket, for example.
+
+```{r session summary}
+sessionInfo()
+```
